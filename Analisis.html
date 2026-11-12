@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análisis Vertical y Horizontal con Auditoría IA</title>
+
+    <!-- Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <!-- PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <!-- Lector PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f9; color: #333; padding: 2rem; }
+        
+        .titulo-principal { text-align: center; color: #1a3a5c; font-size: 1.6rem; font-weight: 800; text-transform: uppercase; margin-bottom: 0.5rem; }
+        .subtitulo { text-align: center; color: #5a6b7d; font-size: 1rem; margin-bottom: 2rem; }
+
+        .contenedor-cargas { display: flex; gap: 2rem; justify-content: center; flex-wrap: wrap; max-width: 1100px; margin: 0 auto 2rem; }
+        .zona-carga { flex: 1; min-width: 320px; background: white; border: 2px dashed #b8c4d0; border-radius: 12px; padding: 1.5rem; text-align: center; transition: all 0.3s; }
+        .zona-carga:hover { border-color: #2c7be5; background: #f0f6ff; }
+        .zona-carga.listo { border-color: #27ae60; background: #f0fff4; }
+        .zona-carga.error { border-color: #e74c3c; background: #fff5f5; }
+        
+        .btn-seleccionar { background: #2c7be5; color: white; border: none; padding: 0.6rem 1.5rem; border-radius: 6px; font-size: 0.95rem; cursor: pointer; margin-top: 1rem; transition: background 0.3s;}
+        .btn-seleccionar:hover { background: #1a5fc4; }
+        .btn-seleccionar:disabled { background: #95a5a6; cursor: not-allowed; }
+        input[type="file"] { display: none; }
+        
+        .estado-archivo { margin-top: 1rem; font-size: 0.85rem; font-weight: 600; }
+        .estado-archivo.ok { color: #27ae60; }
+        .estado-archivo.err { color: #e74c3c; }
+        .estado-archivo.info { color: #2c7be5; }
+
+        .panel-resultados { max-width: 1400px; margin: 0 auto; display: none; }
+        .panel-resultados.visible { display: block; }
+
+        .tarjeta { background: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .header-tarjeta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 2px solid #eaf2ff; padding-bottom: 0.5rem; flex-wrap: wrap; gap: 1rem;}
+        .header-tarjeta h2 { color: #1a3a5c; font-size: 1.2rem; margin: 0; }
+        
+        .grupo-botones { display: flex; gap: 0.5rem; }
+        .btn-exportar { color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 5px; transition: background 0.3s;}
+        .btn-excel { background: #27ae60; }
+        .btn-excel:hover { background: #219150; }
+        .btn-pdf { background: #e74c3c; }
+        .btn-pdf:hover { background: #c0392b; }
+
+        .tabla-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th { background: #1a3a5c; color: white; padding: 0.6rem 0.5rem; text-align: center; border: 1px solid #142e4a; }
+        td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #edf2f7; border-right: 1px solid #edf2f7; vertical-align: middle; }
+        tr:hover td { background: #f7fafc; }
+        
+        .col-cuenta { text-align: left; min-width: 200px; font-weight: 500; }
+        .monto { text-align: right; font-family: 'Courier New', monospace; white-space: nowrap; }
+        .porcentaje { text-align: right; font-family: 'Courier New', monospace; white-space: nowrap; }
+        .variacion-pos { color: #27ae60; font-weight: bold; }
+        .variacion-neg { color: #e74c3c; font-weight: bold; }
+        
+        .seccion-td { background: #eaf2ff; font-weight: 700; color: #1a3a5c; text-align: left; }
+        .total-td { font-weight: 700; background: #f7fafc; }
+
+        .fila-significativa { background-color: #fff3cd !important; border-left: 4px solid #f39c12; }
+        .badge-significativa { background: #e74c3c; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-left: 5px; font-weight: bold; }
+
+        /* Estilo para el campo de observación generado automáticamente */
+        .input-observacion { width: 100%; padding: 0.4rem; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 0.85rem; font-family: inherit; transition: border 0.2s;}
+        .input-observacion:focus { outline: none; border-color: #2c7be5; box-shadow: 0 0 0 2px rgba(44,123,229,0.2); }
+        
+        /* Color especial si la observación fue generada por el sistema */
+        .obs-auto { background-color: #f0f8ff; color: #1a3a5c; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <h1 class="titulo-principal">Análisis Vertical y Horizontal de Estados Financieros</h1>
+    <p class="subtitulo">El sistema generará observaciones automáticas basadas en el análisis de los porcentajes</p>
+
+    <div class="contenedor-cargas">
+        <div class="zona-carga" id="zonaBalance">
+            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">📊</div>
+            <h3>Balance General</h3>
+            <p style="color:#666; font-size:0.9rem; margin-top:5px;">Excel o PDF</p>
+            <button class="btn-seleccionar" id="btnBalance" onclick="document.getElementById('inputBalance').click()">Seleccionar archivo</button>
+            <input type="file" id="inputBalance" accept=".pdf,.xlsx,.xls">
+            <div class="estado-archivo" id="estadoBalance"></div>
+        </div>
+
+        <div class="zona-carga" id="zonaResultados">
+            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">📈</div>
+            <h3>Estado de Resultados</h3>
+            <p style="color:#666; font-size:0.9rem; margin-top:5px;">Excel o PDF</p>
+            <button class="btn-seleccionar" id="btnResultados" onclick="document.getElementById('inputResultados').click()">Seleccionar archivo</button>
+            <input type="file" id="inputResultados" accept=".pdf,.xlsx,.xls">
+            <div class="estado-archivo" id="estadoResultados"></div>
+        </div>
+    </div>
+
+    <div class="panel-resultados" id="panelResultados">
+        
+        <!-- PANEL BALANCE GENERAL -->
+        <div class="tarjeta" id="tarjetaBalance" style="display:none;">
+            <div class="header-tarjeta">
+                <h2>📊 Balance General</h2>
+                <div class="grupo-botones">
+                    <button class="btn-exportar btn-excel" onclick="exportarTabla('balance', 'excel')">📥 Excel</button>
+                    <button class="btn-exportar btn-pdf" onclick="exportarTabla('balance', 'pdf')">📄 PDF</button>
+                </div>
+            </div>
+            <div class="tabla-wrap">
+                <table id="tablaBalance">
+                    <thead>
+                        <tr>
+                            <th class="col-cuenta">Cuentas</th>
+                            <th>Saldos al 2019</th>
+                            <th>Análisis Vertical 2019 (%)</th>
+                            <th>Saldos al 2020</th>
+                            <th>Análisis Vertical 2020 (%)</th>
+                            <th>Variación Absoluta (+ / -)</th>
+                            <th>Análisis Horizontal (%)</th>
+                            <th style="min-width: 250px;">Observación / Riesgo de Auditoría</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- PANEL ESTADO DE RESULTADOS -->
+        <div class="tarjeta" id="tarjetaResultados" style="display:none;">
+            <div class="header-tarjeta">
+                <h2>📈 Estado de Resultados</h2>
+                <div class="grupo-botones">
+                    <button class="btn-exportar btn-excel" onclick="exportarTabla('resultados', 'excel')">📥 Excel</button>
+                    <button class="btn-exportar btn-pdf" onclick="exportarTabla('resultados', 'pdf')">📄 PDF</button>
+                </div>
+            </div>
+            <div class="tabla-wrap">
+                <table id="tablaResultados">
+                    <thead>
+                        <tr>
+                            <th class="col-cuenta">Cuentas</th>
+                            <th>Saldos al 2019</th>
+                            <th>Análisis Vertical 2019 (%)</th>
+                            <th>Saldos al 2020</th>
+                            <th>Análisis Vertical 2020 (%)</th>
+                            <th>Variación Absoluta (+ / -)</th>
+                            <th>Análisis Horizontal (%)</th>
+                            <th style="min-width: 250px;">Observación / Riesgo de Auditoría</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        const datos = {
+            balance:    { cuentas: [], gestiones: [] },
+            resultados: { cuentas: [], gestiones: [] }
+        };
+
+        // --- LECTURA DE ARCHIVOS ---
+        function esTextoCuenta(val) {
+            if (typeof val !== 'string') return false;
+            const t = val.trim();
+            if (t.length < 2 || t.length > 150) return false;
+            if (!/[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(t)) return false;
+            const lower = t.toLowerCase();
+            const basura = ['expresado en bolivianos', 'expresado', 'bolivianos', 'bs bs', 'bs', 'al 31', 'por el ejercicio', 'reexpresado', 'comparativo', 'nota', 'notas', 'anexo', 'gestión', 'gestion', 'activo bs bs', 'pasivo bs bs'];
+            return !basura.includes(lower);
+        }
+
+        function parsearMonto(val) {
+            if (val === null || val === undefined) return null;
+            if (typeof val === 'number') return isFinite(val) ? val : null;
+            let s = String(val).trim();
+            if (s === '' || s === '-') return 0;
+            let negativo = false;
+            if (/^\(.*\)$/.test(s)) { negativo = true; s = s.replace(/[()]/g, ''); }
+            s = s.replace(/[Bb][Ss]\.?/g, '').replace(/\s/g, '');
+            if (s === '' || s === '-') return 0;
+            const tieneComa = s.includes(','), tienePunto = s.includes('.');
+            if (tieneComa && tienePunto) {
+                if (s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g, '').replace(',', '.');
+                else s = s.replace(/,/g, '');
+            } else if (tieneComa) {
+                const partes = s.split(',');
+                if (partes.length === 2 && partes[1].length <= 2) s = s.replace(',', '.'); else s = s.replace(/,/g, '');
+            } else if (tienePunto) {
+                const partes = s.split('.');
+                if (partes.length > 2 || (partes.length === 2 && partes[1].length === 3)) s = s.replace(/\./g, '');
+            }
+            let n = parseFloat(s);
+            if (isNaN(n) || !isFinite(n)) return null;
+            if (negativo) n = -Math.abs(n);
+            return n;
+        }
+
+        function limpiarGestion(txt) {
+            let t = String(txt).trim();
+            const soloDigitos = t.replace(/\D/g, '');
+            if (soloDigitos.length === 4 && (soloDigitos.startsWith('19') || soloDigitos.startsWith('20'))) return soloDigitos;
+            if (soloDigitos.length >= 8 && (soloDigitos.startsWith('19') || soloDigitos.startsWith('20'))) return soloDigitos.substring(0, 4);
+            const m = t.match(/\b(19|20)\d{2}\b/);
+            return m ? m[0] : t;
+        }
+
+        async function leerExcel(file) {
+            const buffer = await file.arrayBuffer();
+            const wb = XLSX.read(buffer, { type: 'array' });
+            let cuentas = [], gestiones = [];
+            for (const nombreHoja of wb.SheetNames) {
+                const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombreHoja], { header: 1, defval: '', blankrows: false });
+                if (!filas || filas.length === 0) continue;
+                const maxCols = Math.max(...filas.map(f => f.length));
+                const puntajeCol = new Array(maxCols).fill(0);
+                for (const fila of filas) for (let c = 0; c < maxCols; c++) if (esTextoCuenta(fila[c])) puntajeCol[c]++;
+                let colCuenta = -1, maxPunt = 0;
+                puntajeCol.forEach((p, i) => { if (p > maxPunt) { maxPunt = p; colCuenta = i; } });
+                if (colCuenta === -1 || maxPunt < 2) continue;
+                const puntajeNum = new Array(maxCols).fill(0);
+                for (const fila of filas) for (let c = 0; c < maxCols; c++) if (c !== colCuenta) { const n = parsearMonto(fila[c]); if (n !== null) puntajeNum[c]++; }
+                const colsMonto = [];
+                puntajeNum.forEach((p, i) => { if (i !== colCuenta && p >= Math.max(2, maxPunt * 0.3)) colsMonto.push(i); });
+                colsMonto.sort((a, b) => a - b);
+                if (colsMonto.length === 0) continue;
+                let encabezados = colsMonto.map(() => '');
+                for (let f = 0; f < Math.min(filas.length, 15); f++) {
+                    let hallado = false;
+                    colsMonto.forEach((c, idx) => { const v = String(filas[f][c] || '').trim(); if (v && v.length < 30) { encabezados[idx] = limpiarGestion(v); hallado = true; } });
+                    if (hallado && filas[f][colCuenta] && esTextoCuenta(filas[f][colCuenta])) break;
+                }
+                encabezados.forEach(e => { if (e && !gestiones.includes(e)) gestiones.push(e); });
+                for (const fila of filas) {
+                    if (!fila) continue;
+                    const textoCuenta = fila[colCuenta];
+                    if (!esTextoCuenta(textoCuenta)) continue;
+                    const montosFila = colsMonto.map(c => parsearMonto(fila[c]));
+                    cuentas.push({ cuenta: textoCuenta.trim(), montos: montosFila, esSeccion: montosFila.every(m => m === null) });
+                }
+            }
+            return { cuentas, gestiones };
+        }
+
+        async function leerPDF(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let lineasExtraidas = [];
+            for (let p = 1; p <= pdf.numPages; p++) {
+                const content = await (await pdf.getPage(p)).getTextContent();
+                const filasMap = {};
+                for (const item of content.items) {
+                    if (!item.str || !item.str.trim()) continue;
+                    const y = item.transform[5];
+                    if (!filasMap[y]) filasMap[y] = [];
+                    filasMap[y].push(item);
+                }
+                const ys = Object.keys(filasMap).map(Number).sort((a, b) => b - a);
+                for (const y of ys) {
+                    const items = filasMap[y].sort((a, b) => a.transform[4] - b.transform[4]);
+                    const texto = items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+                    if (texto) lineasExtraidas.push({ y, texto });
+                }
+            }
+            const lineasFusionadas = [];
+            let i = 0;
+            while (i < lineasExtraidas.length) {
+                let actual = { ...lineasExtraidas[i] };
+                const tieneNumerosActual = /\d{1,3}(?:[.,]\d{3})+/.test(actual.texto);
+                const tieneLetrasActual = /[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(actual.texto);
+                if (!tieneNumerosActual && tieneLetrasActual && i + 1 < lineasExtraidas.length) {
+                    const siguiente = lineasExtraidas[i + 1];
+                    const tieneNumerosSig = /\d{1,3}(?:[.,]\d{3})+/.test(siguiente.texto);
+                    const tieneLetrasSig = /[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(siguiente.texto);
+                    if (tieneNumerosSig && !tieneLetrasSig && Math.abs(actual.y - siguiente.y) <= 20) {
+                        actual.texto += ' ' + siguiente.texto;
+                        i++;
+                    }
+                }
+                lineasFusionadas.push(actual);
+                i++;
+            }
+
+            const cuentas = [];
+            let gestiones = [];
+            for (const linea of lineasFusionadas) {
+                let texto = linea.texto;
+                if (/D&P|ESTADO DE RESULTADOS|BALANCE GENERAL|Por el ejercicio|Al 31|expresado en bolivianos|reexpresado|Bs Bs|^3$|^4$/i.test(texto)) continue;
+                if (texto === '2020 2019') continue;
+                if (cuentas.length < 5) {
+                    const m = texto.match(/\b(19|20)\d{2}\b/g);
+                    if (m) m.forEach(a => { const g = limpiarGestion(a); if (!gestiones.includes(g)) gestiones.push(g); });
+                }
+                const regexMontos = /\(?-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?\)?/g;
+                let montosEncontrados = [];
+                let match;
+                while ((match = regexMontos.exec(texto)) !== null) {
+                    const val = parsearMonto(match[0]);
+                    if (val !== null && val !== 2019 && val !== 2020 && Math.abs(val) > 0.01) {
+                        montosEncontrados.push({ val, index: match.index, raw: match[0] });
+                    }
+                }
+                let textoCuenta = texto;
+                if (montosEncontrados.length > 0) {
+                    let corte = montosEncontrados[0].index;
+                    if (corte < 5 && montosEncontrados.length > 1) {
+                        montosEncontrados.shift();
+                        corte = montosEncontrados[0].index;
+                    }
+                    textoCuenta = texto.substring(0, corte).trim();
+                }
+                textoCuenta = textoCuenta.replace(/^[\d]+(\.\d+)*[.)]?\s+/, '').trim();
+                if (!esTextoCuenta(textoCuenta)) continue;
+                if (montosEncontrados.length === 0) {
+                    if (textoCuenta.length < 60) cuentas.push({ cuenta: textoCuenta, montos: [], esSeccion: true });
+                } else {
+                    let montosFinales = montosEncontrados.map(m => m.val);
+                    if (montosFinales.length > 2) montosFinales = montosFinales.slice(-2);
+                    cuentas.push({ cuenta: textoCuenta, montos: montosFinales, esSeccion: false });
+                }
+            }
+            if (gestiones.length < 2) gestiones = ['Monto 2', 'Monto 1'];
+            else gestiones = [...new Set(gestiones)].sort((a, b) => b - a);
+            return { cuentas, gestiones };
+        }
+
+        // --- CÁLCULOS BASE ---
+        function calcularBases(datosDoc, esBalance) {
+            const cuentasReales = datosDoc.cuentas.filter(c => !c.esSeccion);
+            let tAct2020 = 0, tAct2019 = 0, tPasPat2020 = 0, tPasPat2019 = 0, tVentas2020 = 0, tVentas2019 = 0;
+
+            if (esBalance) {
+                const tAct = cuentasReales.find(c => c.cuenta.toLowerCase() === 'total activo');
+                tAct2020 = tAct ? (tAct.montos[0] || 0) : cuentasReales.filter(c => c.cuenta.toLowerCase().startsWith('activo')).reduce((acc, c) => acc + (c.montos[0] || 0), 0);
+                tAct2019 = tAct ? (tAct.montos[1] || 0) : cuentasReales.filter(c => c.cuenta.toLowerCase().startsWith('activo')).reduce((acc, c) => acc + (c.montos[1] || 0), 0);
+                
+                const tPas = cuentasReales.find(c => c.cuenta.toLowerCase().includes('total pasivo y patrimonio'));
+                tPasPat2020 = tPas ? (tPas.montos[0] || 0) : tAct2020;
+                tPasPat2019 = tPas ? (tPas.montos[1] || 0) : tAct2019;
+            } else {
+                const tVen = cuentasReales.find(c => c.cuenta.toLowerCase() === 'ventas' || c.cuenta.toLowerCase().includes('ingresos operativos'));
+                tVentas2020 = tVen ? (tVen.montos[0] || 0) : 0;
+                tVentas2019 = tVen ? (tVen.montos[1] || 0) : 0;
+            }
+            return { tAct2020, tAct2019, tPasPat2020, tPasPat2019, tVentas2020, tVentas2019 };
+        }
+
+        // --- IDENTIFICAR LA CUENTA MÁS ALTA DE CADA RUBRO ---
+        function obtenerCuentasSignificativas(datosDoc) {
+            const cuentas = datosDoc.cuentas;
+            const significativas = new Set();
+            let rubroActual = "General";
+            const cuentasPorRubro = {};
+
+            cuentas.forEach((c, idx) => {
+                const lower = c.cuenta.toLowerCase();
+                const esTotal = lower.startsWith('total') || lower.includes('total activo') || lower.includes('total pasivo') || lower.includes('total patrimonio');
+
+                if (c.esSeccion) {
+                    rubroActual = c.cuenta;
+                    if (!cuentasPorRubro[rubroActual]) cuentasPorRubro[rubroActual] = [];
+                } else if (!esTotal) {
+                    if (!cuentasPorRubro[rubroActual]) cuentasPorRubro[rubroActual] = [];
+                    cuentasPorRubro[rubroActual].push({ index: idx, monto: Math.abs(c.montos[0] || 0) });
+                }
+            });
+
+            for (const rubro in cuentasPorRubro) {
+                const lista = cuentasPorRubro[rubro];
+                if (lista.length === 0) continue;
+                let maxMonto = -1, maxIndex = -1;
+                lista.forEach(item => {
+                    if (item.monto > maxMonto) { maxMonto = item.monto; maxIndex = item.index; }
+                });
+                if (maxIndex !== -1 && maxMonto > 0) significativas.add(maxIndex);
+            }
+            return significativas;
+        }
+
+        // --- GENERADOR DE OBSERVACIONES AUTOMÁTICAS ---
+        function generarObservacionAuto(cuenta, av20, ah, esSignificativa, esPasivoPat) {
+            let obs = "";
+            const avAbs = Math.abs(av20);
+            const ahAbs = Math.abs(ah);
+
+            // Reglas de negocio para generar la observación
+            if (esSignificativa) {
+                if (avAbs > 30) {
+                    obs = "Alta concentración. Representa gran parte del rubro. Riesgo de sobrevaluación.";
+                } else {
+                    obs = "Cuenta con el saldo más alto del rubro. Requiere pruebas sustantivas.";
+                }
+            } else {
+                if (ahAbs > 30) {
+                    if (ah > 0) obs = "Incremento inusual (>30%). Verificar soporte de nuevas transacciones.";
+                    else obs = "Disminución drástica (>30%). Posible baja de activos o error.";
+                } else if (avAbs > 10 && avAbs <= 30) {
+                    obs = "Representatividad moderada. Incluir en muestreo de auditoría.";
+                } else {
+                    obs = "Comportamiento estable. Sin alertas significativas.";
+                }
+            }
+
+            // Ajustes específicos según el tipo de cuenta
+            const lower = cuenta.toLowerCase();
+            if (lower.includes('caja') || lower.includes('banco') || lower.includes('disponibilidad')) {
+                if (ahAbs > 50) obs = "Variación drástica en liquidez. Solicitar conciliaciones bancarias y arqueos.";
+            } else if (lower.includes('inventario') || lower.includes('mercaderia')) {
+                obs = "Riesgo de obsolescencia o sobrevaloración. Realizar prueba de valor neto realizable.";
+            } else if (lower.includes('cobrar')) {
+                obs = "Evaluar recuperabilidad. Solicitar análisis de antigüedad de saldos y confirmaciones.";
+            } else if (lower.includes('pagar')) {
+                obs = "Verificar existencia y corte de facturación. Solicitar confirmaciones de saldos.";
+            } else if (lower.includes('ventas') || lower.includes('ingreso')) {
+                obs = "Verificar corte de ingresos. Evaluar reconocimiento bajo NIIF 15.";
+            } else if (lower.includes('costo')) {
+                obs = "Analizar variación del costo respecto a ventas. Verificar métodos de valuación.";
+            } else if (lower.includes('gasto')) {
+                obs = "Analizar variaciones inusuales. Verificar documentación de respaldo y deducibilidad.";
+            }
+
+            return obs;
+        }
+
+        // --- RENDERIZADO DE TABLAS ---
+        function renderTablaAnalisis(tablaId, datosDoc, esBalance) {
+            const tabla = document.getElementById(tablaId);
+            const tbody = tabla.querySelector('tbody');
+            const bases = calcularBases(datosDoc, esBalance);
+            const cuentasSignificativas = obtenerCuentasSignificativas(datosDoc);
+            
+            let html = '';
+
+            datosDoc.cuentas.forEach((c, idx) => {
+                if (c.esSeccion) {
+                    html += `<tr><td class="seccion-td" colspan="8">${c.cuenta}</td></tr>`;
+                    return;
+                }
+                
+                const m2020 = c.montos[0] !== undefined && c.montos[0] !== null ? c.montos[0] : null;
+                const m2019 = c.montos[1] !== undefined && c.montos[1] !== null ? c.montos[1] : null;
+
+                const esSignificativa = cuentasSignificativas.has(idx);
+                const filaClase = esSignificativa ? 'fila-significativa' : '';
+                const badge = esSignificativa ? '<span class="badge-significativa">Significativa</span>' : '';
+                
+                // Análisis Vertical
+                let av2019 = null, av2020 = null, av2019Str = '', av2020Str = '';
+                if (esBalance) {
+                    const esPasivoPat = /pasivo|patrimonio/i.test(c.cuenta);
+                    const base19 = esPasivoPat ? bases.tPasPat2019 : bases.tAct2019;
+                    const base20 = esPasivoPat ? bases.tPasPat2020 : bases.tAct2020;
+                    if (m2019 !== null && base19 !== 0) { av2019 = (m2019 / base19) * 100; av2019Str = av2019.toFixed(2) + '%'; }
+                    if (m2020 !== null && base20 !== 0) { av2020 = (m2020 / base20) * 100; av2020Str = av2020.toFixed(2) + '%'; }
+                } else {
+                    if (m2019 !== null && bases.tVentas2019 !== 0) { av2019 = (m2019 / bases.tVentas2019) * 100; av2019Str = av2019.toFixed(2) + '%'; }
+                    if (m2020 !== null && bases.tVentas2020 !== 0) { av2020 = (m2020 / bases.tVentas2020) * 100; av2020Str = av2020.toFixed(2) + '%'; }
+                }
+
+                // Variación y Análisis Horizontal
+                let varAbs = null, varAbsStr = '', ah = null, ahStr = '', colorVar = '';
+                if (m2020 !== null && m2019 !== null) {
+                    varAbs = m2020 - m2019;
+                    varAbsStr = varAbs.toLocaleString('es-BO', { minimumFractionDigits: 2 });
+                    if (m2019 !== 0) { ah = ((m2020 - m2019) / Math.abs(m2019)) * 100; ahStr = ah.toFixed(2) + '%'; }
+                    if (varAbs > 0) colorVar = 'variacion-pos';
+                    else if (varAbs < 0) colorVar = 'variacion-neg';
+                }
+
+                // Generar Observación Automática
+                const esPasivoPat = esBalance ? /pasivo|patrimonio/i.test(c.cuenta) : false;
+                let obsAuto = "";
+                if (av2020 !== null && ah !== null) {
+                    obsAuto = generarObservacionAuto(c.cuenta, av2020, ah, esSignificativa, esPasivoPat);
+                } else if (av2020 !== null) {
+                    obsAuto = generarObservacionAuto(c.cuenta, av2020, 0, esSignificativa, esPasivoPat);
+                }
+
+                html += `
+                    <tr class="${filaClase}">
+                        <td class="col-cuenta">${c.cuenta} ${badge}</td>
+                        <td class="monto">${m2019 !== null ? m2019.toLocaleString('es-BO', {minimumFractionDigits: 2}) : ''}</td>
+                        <td class="porcentaje">${av2019Str}</td>
+                        <td class="monto">${m2020 !== null ? m2020.toLocaleString('es-BO', {minimumFractionDigits: 2}) : ''}</td>
+                        <td class="porcentaje">${av2020Str}</td>
+                        <td class="monto ${colorVar}">${varAbsStr}</td>
+                        <td class="porcentaje ${colorVar}">${ahStr}</td>
+                        <td><input type="text" class="input-observacion obs-auto" id="obs_${tablaId}_${idx}" value="${obsAuto}" title="Puede editar esta observación si lo desea"></td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function mostrarResultados() {
+            document.getElementById('panelResultados').classList.add('visible');
+            if (datos.balance.cuentas.length > 0) {
+                document.getElementById('tarjetaBalance').style.display = 'block';
+                renderTablaAnalisis('tablaBalance', datos.balance, true);
+            }
+            if (datos.resultados.cuentas.length > 0) {
+                document.getElementById('tarjetaResultados').style.display = 'block';
+                renderTablaAnalisis('tablaResultados', datos.resultados, false);
+            }
+        }
+
+        // --- EXPORTACIÓN ---
+        function exportarTabla(tipo, formato) {
+            const esBalance = tipo === 'balance';
+            const datosDoc = esBalance ? datos.balance : datos.resultados;
+            const nombreBase = esBalance ? 'Balance_General' : 'Estado_Resultados';
+            const tableId = esBalance ? 'tablaBalance' : 'tablaResultados';
+            const bases = calcularBases(datosDoc, esBalance);
+            const cuentasSignificativas = obtenerCuentasSignificativas(datosDoc);
+
+            if (formato === 'excel') {
+                const filas = [["Cuentas", "Saldos al 2019", "AV 2019 (%)", "Saldos al 2020", "AV 2020 (%)", "Variación Absoluta", "Análisis Horizontal (%)", "Observación / Riesgo"]];
+                
+                datosDoc.cuentas.forEach((c, idx) => {
+                    if (c.esSeccion) { filas.push([c.cuenta, "", "", "", "", "", "", ""]); return; }
+                    const m20 = c.montos[0] || 0, m19 = c.montos[1] || 0;
+                    
+                    let av19 = 0, av20 = 0;
+                    if (esBalance) {
+                        const esPasivoPat = /pasivo|patrimonio/i.test(c.cuenta);
+                        av19 = (m19 / (esPasivoPat ? bases.tPasPat2019 : bases.tAct2019)) * 100 || 0;
+                        av20 = (m20 / (esPasivoPat ? bases.tPasPat2020 : bases.tAct2020)) * 100 || 0;
+                    } else {
+                        av19 = (m19 / bases.tVentas2019) * 100 || 0;
+                        av20 = (m20 / bases.tVentas2020) * 100 || 0;
+                    }
+                    
+                    const vAbs = m20 - m19;
+                    const ah = m19 !== 0 ? (vAbs / Math.abs(m19)) : 0;
+                    
+                    const inputObs = document.getElementById(`obs_${tableId}_${idx}`);
+                    const obs = inputObs ? inputObs.value : "";
+                    
+                    const esSig = cuentasSignificativas.has(idx);
+                    const nombreCuenta = esSig ? `* ${c.cuenta}` : c.cuenta;
+
+                    filas.push([nombreCuenta, m19, av19, m20, av20, vAbs, ah, obs]);
+                });
+
+                const ws = XLSX.utils.aoa_to_sheet(filas);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, nombreBase);
+                XLSX.writeFile(wb, `${nombreBase}_Analisis.xlsx`);
+            } 
+            else if (formato === 'pdf') {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('landscape');
+                doc.setFontSize(14);
+                doc.text(`Análisis Vertical y Horizontal - ${esBalance ? 'Balance General' : 'Estado de Resultados'}`, 14, 15);
+                
+                const body = [];
+                datosDoc.cuentas.forEach((c, idx) => {
+                    if (c.esSeccion) {
+                        body.push([{ content: c.cuenta, colSpan: 8, styles: { fillColor: [234, 242, 255], fontStyle: 'bold', textColor: [26, 58, 92] } }]);
+                        return;
+                    }
+                    const m20 = c.montos[0] || 0, m19 = c.montos[1] || 0;
+                    
+                    let av19 = '-', av20 = '-';
+                    if (esBalance) {
+                        const esPasivoPat = /pasivo|patrimonio/i.test(c.cuenta);
+                        av19 = (m19 / (esPasivoPat ? bases.tPasPat2019 : bases.tAct2019) * 100).toFixed(2) + '%';
+                        av20 = (m20 / (esPasivoPat ? bases.tPasPat2020 : bases.tAct2020) * 100).toFixed(2) + '%';
+                    } else {
+                        av19 = (m19 / bases.tVentas2019 * 100).toFixed(2) + '%';
+                        av20 = (m20 / bases.tVentas2020 * 100).toFixed(2) + '%';
+                    }
+
+                    const vAbs = (m20 - m19).toLocaleString('es-BO', { minimumFractionDigits: 2 });
+                    const ah = m19 !== 0 ? (((m20 - m19) / Math.abs(m19)) * 100).toFixed(2) + '%' : '-';
+                    
+                    const inputObs = document.getElementById(`obs_${tableId}_${idx}`);
+                    const obs = inputObs ? inputObs.value : "";
+                    
+                    const esSig = cuentasSignificativas.has(idx);
+                    const estilos = esSig ? { fillColor: [255, 243, 205] } : {};
+                    const nombreCuenta = esSig ? `* ${c.cuenta}` : c.cuenta;
+
+                    body.push([
+                        { content: nombreCuenta, styles: estilos },
+                        { content: m19.toLocaleString('es-BO', {minimumFractionDigits:2}), styles: estilos },
+                        { content: av19, styles: estilos },
+                        { content: m20.toLocaleString('es-BO', {minimumFractionDigits:2}), styles: estilos },
+                        { content: av20, styles: estilos },
+                        { content: vAbs, styles: estilos },
+                        { content: ah, styles: estilos },
+                        { content: obs, styles: estilos }
+                    ]);
+                });
+
+                doc.autoTable({
+                    startY: 22,
+                    head: [["Cuentas", "Saldos 2019", "AV 2019", "Saldos 2020", "AV 2020", "Var. Absoluta", "AH (%)", "Observación"]],
+                    body: body,
+                    theme: 'grid',
+                    styles: { fontSize: 7, cellPadding: 1.5 },
+                    headStyles: { fillColor: [26, 58, 92], textColor: 255, halign: 'center' },
+                    columnStyles: { 0: {cellWidth: 50}, 1: {halign: 'right'}, 2: {halign: 'right'}, 3: {halign: 'right'}, 4: {halign: 'right'}, 5: {halign: 'right'}, 6: {halign: 'right'}, 7: {cellWidth: 50} }
+                });
+                doc.save(`${nombreBase}_Analisis.pdf`);
+            }
+        }
+
+        // --- PROCESAR ARCHIVOS ---
+        async function procesarArchivo(file, tipo) {
+            const zona = document.getElementById(tipo === 'balance' ? 'zonaBalance' : 'zonaResultados');
+            const estado = document.getElementById(tipo === 'balance' ? 'estadoBalance' : 'estadoResultados');
+            const btn = document.getElementById(tipo === 'balance' ? 'btnBalance' : 'btnResultados');
+
+            zona.classList.remove('listo', 'error'); 
+            estado.className = 'estado-archivo info'; 
+            estado.textContent = 'Leyendo archivo...';
+            btn.disabled = true;
+
+            try {
+                const ext = file.name.split('.').pop().toLowerCase();
+                let resultado = (ext === 'xlsx' || ext === 'xls') ? await leerExcel(file) : (ext === 'pdf' ? await leerPDF(file) : null);
+                if (!resultado) throw new Error('Formato no soportado');
+
+                datos[tipo] = resultado;
+                const reales = resultado.cuentas.filter(c => !c.esSeccion).length;
+                
+                if (reales === 0) {
+                    zona.classList.add('error'); estado.className = 'estado-archivo err';
+                    estado.textContent = `No se detectaron cuentas válidas.`;
+                } else {
+                    zona.classList.add('listo'); estado.className = 'estado-archivo ok';
+                    estado.textContent = `✓ ${file.name} — ${reales} cuentas.`;
+                }
+                mostrarResultados();
+            } catch (err) {
+                zona.classList.add('error'); estado.className = 'estado-archivo err';
+                estado.textContent = `Error: ${err.message}`;
+            } finally {
+                btn.disabled = false; 
+            }
+        }
+
+        document.getElementById('inputBalance').addEventListener('change', (e) => { if (e.target.files[0]) procesarArchivo(e.target.files[0], 'balance'); });
+        document.getElementById('inputResultados').addEventListener('change', (e) => { if (e.target.files[0]) procesarArchivo(e.target.files[0], 'resultados'); });
+    </script>
+</body>
+</html>
